@@ -12,6 +12,12 @@ from einops import rearrange
 from packaging import version
 from safetensors.torch import load_file as load_safetensors
 
+from ..apex_levels import (
+    assert_level_config,
+    box_downsample_to,
+    keep_prefix_channels,
+    sample_level,
+)
 from ..modules.autoencoding.regularizers import AbstractRegularizer
 from ..modules.efficientvitmodules.model import Encoder, Decoder
 from ..modules.ema import LitEma
@@ -551,6 +557,8 @@ class AutoencoderDC(AutoencodingEngine):
         diff_boost_factor: float = 3.0,
         ckpt_engine: Union[None, str, dict] = None,
         ckpt_path: Optional[str] = None,
+        level_channels: Optional[List[int]] = None,
+        level_target_sizes: Optional[List[int]] = None,
         **kwargs,
     ):
         AbstractAutoencoder.__init__(self, *args, **kwargs)
@@ -560,6 +568,19 @@ class AutoencoderDC(AutoencodingEngine):
         decoder_config = instantiate_from_config(decoder_config)
         self.encoder: torch.nn.Module = Encoder(encoder_config)
         self.decoder: torch.nn.Module = Decoder(decoder_config)
+        if level_channels is None and level_target_sizes is None:
+            self.level_channels = None
+            self.level_target_sizes = None
+        else:
+            assert level_channels is not None and level_target_sizes is not None
+            assert not self.encoder.cfg.double_latent
+            level_channels = tuple(int(c) for c in level_channels)
+            level_target_sizes = tuple(int(s) for s in level_target_sizes)
+            assert_level_config(
+                level_channels, level_target_sizes, self.encoder.cfg.latent_channels
+            )
+            self.level_channels = level_channels
+            self.level_target_sizes = level_target_sizes
         self.loss: torch.nn.Module = instantiate_from_config(loss_config)
         self.optimizer_config = default(
             optimizer_config, {"target": "torch.optim.AdamW"}
@@ -627,6 +648,18 @@ class AutoencoderDC(AutoencodingEngine):
         x = self.decoder(z)
         return x
 
+    def _encode_decode_for_loss(
+        self, x: torch.Tensor
+    ) -> Tuple[torch.Tensor, torch.Tensor, dict, torch.Tensor]:
+        z, reg_log = self.encode(x, return_reg_log=True)
+        if self.level_channels is None:
+            return z, self.decode(z), reg_log, x
+        level = sample_level(len(self.level_channels))
+        z = keep_prefix_channels(z, self.level_channels[level])
+        xrec = self.decode(z)
+        target = self.level_target_sizes[level]
+        return z, box_downsample_to(xrec, target), reg_log, box_downsample_to(x, target)
+
     def forward(
         self, x: torch.Tensor, global_step: int = 0
     ) -> Tuple[torch.Tensor, torch.Tensor, dict]:
@@ -638,7 +671,7 @@ class AutoencoderDC(AutoencodingEngine):
         self, batch: dict, batch_idx: int, optimizer_idx: int = 0
     ) -> torch.Tensor:
         x = self.get_input(batch)
-        z, xrec, regularization_log = self(x, self.global_step)
+        z, xrec, regularization_log, x = self._encode_decode_for_loss(x)
         if hasattr(self.loss, "forward_keys"):
             extra_info = {
                 "z": z,
@@ -690,6 +723,42 @@ class AutoencoderDC(AutoencodingEngine):
             return discloss
         else:
             raise NotImplementedError(f"Unknown optimizer {optimizer_idx}")
+
+    def _validation_step(self, batch: dict, batch_idx: int, postfix: str = "") -> Dict:
+        x = self.get_input(batch)
+        z, xrec, regularization_log, x = self._encode_decode_for_loss(x)
+        if hasattr(self.loss, "forward_keys"):
+            extra_info = {
+                "z": z,
+                "optimizer_idx": 0,
+                "global_step": self.global_step,
+                "last_layer": self.get_last_layer(),
+                "split": "val" + postfix,
+                "regularization_log": regularization_log,
+                "autoencoder": self,
+            }
+            extra_info = {k: extra_info[k] for k in self.loss.forward_keys}
+        else:
+            extra_info = dict()
+        out_loss = self.loss(x, xrec, **extra_info)
+        if isinstance(out_loss, tuple):
+            aeloss, log_dict_ae = out_loss
+        else:
+            aeloss = out_loss
+            log_dict_ae = {f"val{postfix}/loss/rec": aeloss.detach()}
+        full_log_dict = log_dict_ae
+
+        if "optimizer_idx" in extra_info:
+            extra_info["optimizer_idx"] = 1
+            discloss, log_dict_disc = self.loss(x, xrec, **extra_info)
+            full_log_dict.update(log_dict_disc)
+        self.log(
+            f"val{postfix}/loss/rec",
+            log_dict_ae[f"val{postfix}/loss/rec"],
+            sync_dist=True,
+        )
+        self.log_dict(full_log_dict, sync_dist=True)
+        return full_log_dict
 
     @torch.no_grad()
     def log_images(
