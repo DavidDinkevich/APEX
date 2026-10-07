@@ -2,6 +2,38 @@
 
 This repository is a branch of [lavinal712/AutoencoderKL](https://github.com/lavinal712/AutoencoderKL) with some modifications for the DC-AE. This code aims to provide a simple and easy-to-use training script regarding to [issue #173](https://github.com/mit-han-lab/efficientvit/issues/173).
 
+APEX adds optional `level_channels` and `level_target_sizes` on `AutoencoderDC`. When they are set, each training step samples a channel prefix, zeros later channels, and applies the stock DC-AE loss to BOX-downsampled reconstructions (successive `avg_pool2d(2)` until the level's target size). Omit both fields to train vanilla DC-AE.
+
+## APEX example: f64c8-32-128
+
+Official `dc-ae-f64c128-in-1.0` (7 stages, 128 latent channels) with:
+
+```yaml
+level_channels: [8, 32, 128]
+level_target_sizes: [128, 256, 512]
+```
+
+Crops are 512² so the last BOX target is native resolution. Same three-phase L1+LPIPS+PatchGAN recipe as the f32 configs:
+
+```
+configs/
+├── apex-f64c8-32-128_phase1.yaml
+├── apex-f64c8-32-128_phase2.yaml
+└── apex-f64c8-32-128_phase3.yaml
+```
+
+```bash
+torchrun --nproc_per_node=4 --nnodes=1 main.py \
+    --base configs/apex-f64c8-32-128_phase1.yaml \
+    --train \
+    --scale_lr False \
+    --wandb True
+```
+
+Resume phase 2 and 3 from the previous checkpoint, same as below.
+
+## DC-AE f32c32
+
 We provide three different parameter configurations corresponding to the three phases of DC-AE training.
 
 ```
