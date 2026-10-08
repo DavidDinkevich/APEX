@@ -155,6 +155,7 @@ class SiT(nn.Module):
         class_dropout_prob=0.1,
         num_classes=1000,
         learn_sigma=True,
+        level_channels=None,
     ):
         super().__init__()
         self.learn_sigma = learn_sigma
@@ -162,6 +163,18 @@ class SiT(nn.Module):
         self.out_channels = in_channels * 2 if learn_sigma else in_channels
         self.patch_size = patch_size
         self.num_heads = num_heads
+        if level_channels is None:
+            self.level_channels = None
+        else:
+            level_channels = tuple(int(c) for c in level_channels)
+            assert len(level_channels) >= 1
+            assert level_channels == tuple(sorted(level_channels))
+            assert len(set(level_channels)) == len(level_channels)
+            assert all(c > 0 for c in level_channels)
+            assert level_channels[-1] == in_channels, (
+                f"last level_channels entry must equal in_channels={in_channels}, got {level_channels[-1]}"
+            )
+            self.level_channels = level_channels
 
         self.x_embedder = PatchEmbed(input_size, patch_size, in_channels, hidden_size, bias=True)
         self.t_embedder = TimestepEmbedder(hidden_size)
@@ -193,6 +206,10 @@ class SiT(nn.Module):
         w = self.x_embedder.proj.weight.data
         nn.init.xavier_uniform_(w.view([w.shape[0], -1]))
         nn.init.constant_(self.x_embedder.proj.bias, 0)
+        if self.level_channels is not None:
+            c0 = self.level_channels[0]
+            w[:, c0:] = 0
+            nn.init.xavier_uniform_(w[:, :c0].reshape(w.shape[0], -1))
 
         # Initialize label embedding table:
         nn.init.normal_(self.y_embedder.embedding_table.weight, std=0.02)
