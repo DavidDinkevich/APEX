@@ -10,9 +10,8 @@ torch.backends.cuda.matmul.allow_tf32 = True
 torch.backends.cudnn.allow_tf32 = True
 import torch.distributed as dist
 from torch.nn.parallel import DistributedDataParallel as DDP
-from torch.utils.data import DataLoader, Dataset
+from torch.utils.data import DataLoader
 from torch.utils.data.distributed import DistributedSampler
-import numpy as np
 from collections import OrderedDict
 from copy import deepcopy
 from glob import glob
@@ -22,6 +21,7 @@ import logging
 import os
 
 from apex_loss import apex_training_loss
+from datasets.img_latent_dataset import ImgLatentDataset
 from models import SiT_models
 import wandb_utils
 
@@ -80,32 +80,6 @@ def parse_level_channels(value):
     channels = tuple(int(part) for part in value.split(","))
     assert len(channels) >= 1, value
     return channels
-
-
-class LatentNpyFolder(Dataset):
-    """ImageFolder layout of (C, H, W) float32 .npy latents. Class index from subdirectory."""
-
-    def __init__(self, root):
-        classes = sorted(
-            name for name in os.listdir(root) if os.path.isdir(os.path.join(root, name))
-        )
-        assert classes, f"no class folders in {root}"
-        self.samples = []
-        for class_index, class_name in enumerate(classes):
-            class_dir = os.path.join(root, class_name)
-            for filename in sorted(os.listdir(class_dir)):
-                if filename.endswith(".npy"):
-                    self.samples.append((os.path.join(class_dir, filename), class_index))
-        assert self.samples, f"no .npy latents in {root}"
-
-    def __len__(self):
-        return len(self.samples)
-
-    def __getitem__(self, index):
-        path, label = self.samples[index]
-        latent = torch.from_numpy(np.load(path)).float()
-        assert latent.ndim == 3, (path, tuple(latent.shape))
-        return latent, label
 
 
 #################################################################################
@@ -172,7 +146,7 @@ def main(args):
         ema.load_state_dict(checkpoint["ema"])
         opt.load_state_dict(checkpoint["opt"])
 
-    dataset = LatentNpyFolder(args.data_path)
+    dataset = ImgLatentDataset(args.data_path)
     sampler = DistributedSampler(
         dataset,
         num_replicas=dist.get_world_size(),

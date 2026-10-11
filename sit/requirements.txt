@@ -1,0 +1,8 @@
+timm
+numpy
+wandb
+diffusers
+accelerate
+torchdiffeq
+safetensors
+tqdm
