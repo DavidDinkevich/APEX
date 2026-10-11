@@ -1,0 +1,345 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <meta
+      name="description"
+      content="APEX: Asynchronous Prefix Denoising for Extreme Compression. We make high-compression latent spaces competitive by enabling channel scaling."
+    />
+    <meta property="og:type" content="website" />
+    <meta property="og:title" content="APEX: Asynchronous Prefix Denoising for Extreme Compression" />
+    <meta property="og:description" content="We make high-compression latent spaces competitive by enabling channel scaling." />
+    <meta property="og:url" content="https://daviddinkevich.github.io/APEX/" />
+    <meta property="og:image" content="https://daviddinkevich.github.io/static/images/apex-social-card.gif" />
+    <meta property="og:image:secure_url" content="https://daviddinkevich.github.io/static/images/apex-social-card.gif" />
+    <meta property="og:image:type" content="image/gif" />
+    <meta property="og:image:width" content="1200" />
+    <meta property="og:image:height" content="630" />
+    <meta property="og:image:alt" content="APEX Level 0 lionfish decode" />
+    <meta name="twitter:card" content="summary_large_image" />
+    <meta name="twitter:title" content="APEX: Asynchronous Prefix Denoising for Extreme Compression" />
+    <meta name="twitter:description" content="We make high-compression latent spaces competitive by enabling channel scaling." />
+    <meta name="twitter:image" content="https://daviddinkevich.github.io/static/images/apex-social-card.gif" />
+    <meta name="twitter:image:alt" content="APEX Level 0 lionfish decode" />
+    <link rel="canonical" href="https://daviddinkevich.github.io/APEX/" />
+    <link rel="icon" href="static/images/teaser.png" type="image/png" />
+    <title>APEX: Asynchronous Prefix Denoising for Extreme Compression</title>
+    <script>
+      if (new URLSearchParams(window.location.search).get("layout") !== "zigzag") {
+        document.documentElement.classList.add("layout-stacked");
+      }
+    </script>
+    <link rel="preconnect" href="https://fonts.googleapis.com" />
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@450;500;600;700&display=swap" rel="stylesheet" />
+    <link rel="preload" as="image" href="static/images/hero/trajectories/iguana/frames/000.webp" fetchpriority="high" />
+    <link rel="stylesheet" href="static/css/index.css?v=story-16" />
+    <script defer src="static/js/story-utils.js?v=story-8"></script>
+    <script defer src="static/js/hero-clock.js?v=story-25"></script>
+    <script defer src="static/js/channel-plot.js?v=story-6"></script>
+    <script defer src="static/js/problem-story.js?v=story-7"></script>
+    <script defer src="static/js/vae-anim.js?v=story-14"></script>
+    <script defer src="static/js/training-anim.js?v=story-20"></script>
+    <script defer src="static/js/channel-payoff.js?v=story-4"></script>
+    <script defer src="static/js/reveal.js?v=story-5"></script>
+  </head>
+  <body>
+    <header class="site-header">
+      <div class="wrap">
+        <h1>APEX</h1>
+        <p class="expansion"><b>A</b>synchronous <b>P</b>refix denoising for <b>EX</b>treme compression</p>
+        <p class="authors">
+          <a href="https://daviddinkevich.github.io" target="_blank" rel="noopener">David Dinkevich</a><sup>1,2</sup>,
+          <a href="https://scholar.google.com/citations?user=jFfW4qMAAAAJ" target="_blank" rel="noopener">Nisan Chiprut</a><sup>1</sup>,
+          <a href="https://scholar.google.com/citations?user=gKJ3MfIAAAAJ" target="_blank" rel="noopener">Yoav HaCohen</a><sup>1</sup>,
+          <a href="https://www.cs.huji.ac.il/~danix/" target="_blank" rel="noopener">Dani Lischinski</a><sup>2</sup>
+        </p>
+        <p class="affiliations"><sup>1</sup>Lightricks &nbsp; <sup>2</sup>Hebrew University of Jerusalem</p>
+        <div class="links">
+          <a class="btn" href="static/pdfs/apex_paper.pdf?v=2">
+            <svg class="btn-icon" viewBox="0 0 24 24" aria-hidden="true">
+              <path d="M6 2h8l4 4v16H6zM14 2v5h5M9 13h6M9 17h6"></path>
+            </svg>
+            PDF
+          </a>
+          <a class="btn is-disabled" href="#" aria-disabled="true">
+            <svg class="btn-icon" viewBox="0 0 24 24" aria-hidden="true">
+              <path d="M5 3h14v18H5zM9 8l6 8M15 8l-6 8"></path>
+            </svg>
+            arXiv (coming soon)
+          </a>
+          <a class="btn is-disabled" href="#" aria-disabled="true">
+            <svg class="btn-icon" viewBox="0 0 24 24" aria-hidden="true">
+              <path d="m9 7-5 5 5 5M15 7l5 5-5 5M13 4l-2 16"></path>
+            </svg>
+            Code (coming soon)
+          </a>
+        </div>
+      </div>
+    </header>
+
+    <section class="hero-stage">
+      <div class="wrap">
+        <div class="hero-panel">
+          <div class="hero-grid">
+            <div class="hero-clock-wrap">
+              <p class="hero-visual-label">Global time</p>
+              <canvas
+                id="hero-clock"
+                width="400"
+                height="188"
+                role="slider"
+                tabindex="0"
+                aria-valuemin="0"
+                aria-valuemax="100"
+                aria-valuenow="0"
+                aria-label="Global generation time. Drag the handle to inspect the staggered denoising of Level 0, Level 1, and Level 2."
+              ></canvas>
+              <p class="hero-caption"><span id="hero-status">Global progress</span> <span id="hero-tau"></span></p>
+            </div>
+            <div class="hero-token-wrap">
+              <p class="hero-visual-label">Token sequence</p>
+              <canvas
+                id="hero-token"
+                width="280"
+                height="152"
+                aria-label="Tokens 1, 2, through N. The channels in every token are divided into Level 0, Level 1, and Level 2."
+              ></canvas>
+            </div>
+            <div class="hero-output-wrap">
+              <p class="hero-visual-label">Decoded image by level</p>
+              <div class="hero-level-strip">
+                <figure class="hero-level-card">
+                  <canvas id="hero-level-0" width="256" height="256" aria-label="Cumulative decode through Level 0."></canvas>
+                  <figcaption>Level 0</figcaption>
+                </figure>
+                <figure class="hero-level-card">
+                  <canvas id="hero-level-1" width="256" height="256" aria-label="Cumulative decode through Level 1."></canvas>
+                  <figcaption><span aria-hidden="true">+</span> Level 1</figcaption>
+                </figure>
+                <figure class="hero-level-card">
+                  <canvas id="hero-level-2" width="256" height="256" aria-label="Cumulative decode through Level 2."></canvas>
+                  <figcaption><span aria-hidden="true">+</span> Level 2</figcaption>
+                </figure>
+              </div>
+              <div class="hero-transport" role="group" aria-label="Generation playback">
+                <button id="hero-previous-image" type="button" aria-label="Previous image" disabled>
+                  <svg viewBox="0 0 20 20" aria-hidden="true">
+                    <path d="M4 4v12M16 4.5 7.5 10l8.5 5.5z"></path>
+                  </svg>
+                </button>
+                <button id="hero-playback" type="button" aria-label="Pause animation" data-state="playing" disabled>
+                  <svg class="hero-icon-play" viewBox="0 0 20 20" aria-hidden="true">
+                    <path d="m6.5 4.5 9 5.5-9 5.5z"></path>
+                  </svg>
+                  <svg class="hero-icon-pause" viewBox="0 0 20 20" aria-hidden="true">
+                    <path d="M6.5 4.5v11M13.5 4.5v11"></path>
+                  </svg>
+                </button>
+                <button id="hero-next-image" type="button" aria-label="Next image" disabled>
+                  <svg viewBox="0 0 20 20" aria-hidden="true">
+                    <path d="M16 4v12M4 4.5l8.5 5.5L4 15.5z"></path>
+                  </svg>
+                </button>
+              </div>
+            </div>
+          </div>
+        </div>
+        <p class="tldr">We make high-compression latent spaces competitive by enabling channel scaling.</p>
+        <details class="hero-abstract">
+          <summary>Abstract</summary>
+          <p>
+            Fewer latent tokens promise cheaper diffusion. Yet aggressive latent compression creates a reconstruction-generation dilemma: adding
+            channels improves reconstruction but makes generation harder. We introduce APEX, short for Asynchronous Prefix denoising for EXtreme
+            compression, which pairs a hierarchical latent space with asynchronous denoising over channel groups. Our autoencoder orders channel
+            prefixes from structure to detail, while one shared denoiser generates them at staggered local times without adding tokens. On
+            ImageNet-512, APEX outperforms existing methods at every evaluated channel count under 64× and 128× compression. At matched training and
+            guided sampling compute, it also outperforms a 256-token model at every evaluated budget, with larger gains at lower compute.
+          </p>
+        </details>
+      </div>
+    </section>
+
+    <section class="split-section story-viewport" id="problem">
+      <div class="wrap-wide">
+        <div class="story-head">
+          <p class="kicker">Problem</p>
+          <h2>Higher spatial compression needs more channels.</h2>
+          <p class="lead">
+            Higher spatial compression makes diffusion cheaper by reducing token counts, but preserving information requires more channels.
+          </p>
+        </div>
+        <div class="anim-stage">
+          <button class="anim-replay" id="problem-replay" type="button" aria-label="Replay the compression and generation-collapse animation">
+            ↻ Replay
+          </button>
+          <div class="problem-duo">
+            <figure>
+              <canvas
+                id="compress-anim"
+                width="560"
+                height="420"
+                aria-label="A 3D latent shrinks from a 16 by 16 latent grid to 4 by 4 while extending from 32 to 512 channels."
+              ></canvas>
+              <figcaption>Token count falls as channel depth grows.</figcaption>
+            </figure>
+            <figure>
+              <canvas
+                id="channel-anim"
+                width="560"
+                height="380"
+                aria-label="For standard DC-AE, reconstruction FID improves while generation FID collapses as channel count grows."
+              ></canvas>
+              <figcaption>Reconstruction improves, but generation collapses under matched training and sampling compute.</figcaption>
+            </figure>
+          </div>
+        </div>
+      </div>
+    </section>
+
+    <section class="split-section" id="representation">
+      <div class="wrap-wide">
+        <div class="story-head">
+          <p class="kicker">Hierarchical latent space</p>
+          <h2>We group the latent channels into levels.</h2>
+          <p class="lead">Each added level reveals progressively finer detail.</p>
+        </div>
+        <figure class="story-fig anim-stage">
+          <button class="anim-replay" id="representation-replay" type="button" aria-label="Replay the structured-latent autoencoder animation">
+            ↻ Replay
+          </button>
+          <canvas
+            id="vae-anim"
+            width="820"
+            height="420"
+            aria-label="Encoder produces cumulative channel prefixes. A suffix is muted, decoded at full size, then loss is taken after resize."
+          ></canvas>
+          <div class="prefix-picker" role="group" aria-label="Choose the cumulative channel prefix to decode">
+            <span>Keep through</span>
+            <button type="button" data-prefix-level="0" aria-pressed="true">Level 0</button>
+            <button type="button" data-prefix-level="1" aria-pressed="false">Level 1</button>
+            <button type="button" data-prefix-level="2" aria-pressed="false">Level 2</button>
+          </div>
+          <p class="prefix-status" id="representation-status" aria-live="polite">Levels 1–2 are zeroed.</p>
+        </figure>
+      </div>
+    </section>
+
+    <section class="split-section" id="generation">
+      <div class="wrap-wide">
+        <div class="story-head">
+          <p class="kicker">Asynchronous denoising</p>
+          <h2>One global time. Different local noise.</h2>
+          <p class="lead">A sampled global time maps to one noise amount for each latent level.</p>
+          <p class="badge">One shared Transformer</p>
+        </div>
+        <figure class="story-fig anim-stage">
+          <button class="anim-replay" id="generation-replay" type="button" aria-label="Replay the asynchronous training animation">↻ Replay</button>
+          <p class="anim-status" id="generation-status" aria-live="polite">Sample one global time.</p>
+          <canvas
+            id="infer-anim"
+            width="820"
+            height="520"
+            aria-label="Training animation: sample a global time, map it to per-level noise times, noise the active latent levels, and predict their velocities with one shared Transformer."
+          ></canvas>
+        </figure>
+      </div>
+    </section>
+
+    <section class="split-section" id="payoff">
+      <div class="wrap-wide split">
+        <div class="split-copy">
+          <p class="kicker">Result</p>
+          <h2>More channels no longer mean collapse.</h2>
+          <p class="lead">APEX tolerates much higher channel counts without collapsing.</p>
+        </div>
+        <figure class="split-fig anim-stage">
+          <button class="anim-replay" id="payoff-replay" type="button" aria-label="Replay the APEX channel-scaling result animation">↻ Replay</button>
+          <canvas
+            id="channel-payoff"
+            width="720"
+            height="420"
+            aria-label="Same gFID versus channels plot: baselines explode, then APEX stays much lower."
+          ></canvas>
+          <figcaption>Existing approaches collapse as channels grow; APEX remains stable.</figcaption>
+        </figure>
+      </div>
+    </section>
+
+    <section class="split-section" id="compute">
+      <div class="wrap-wide split">
+        <div class="split-copy">
+          <p class="kicker">Compute efficiency</p>
+          <h2>Then high compression pays off.</h2>
+          <p class="lead">At limited training and inference budgets, APEX makes fewer tokens outperform less-compressed models.</p>
+        </div>
+        <figure class="split-fig">
+          <img
+            src="static/images/inference.svg?v=3"
+            width="515"
+            height="282"
+            loading="lazy"
+            decoding="async"
+            fetchpriority="low"
+            alt="Guided gFID versus denoiser inference FLOPs: APEX with 64 tokens outperforms DC-AE with 256 tokens across the evaluated compute range."
+          />
+          <figcaption>APEX with 64 tokens leads DC-AE with 256 tokens across the evaluated compute range.</figcaption>
+        </figure>
+      </div>
+    </section>
+
+    <section class="samples">
+      <div class="wrap-wide">
+        <h2>Examples</h2>
+        <div class="sample-stack">
+          <figure>
+            <img
+              class="deferred-image"
+              data-src="static/images/staged_generation_hd.webp"
+              width="3600"
+              height="2528"
+              loading="lazy"
+              decoding="async"
+              fetchpriority="low"
+              alt="Staged generation: successive prefixes decoded when each level reaches t=0."
+            />
+            <figcaption>Decode each prefix as its level completes; every added level sharpens the result.</figcaption>
+          </figure>
+          <figure>
+            <img
+              class="deferred-image"
+              data-src="static/images/app_generations_hd.webp"
+              width="3600"
+              height="4612"
+              loading="lazy"
+              decoding="async"
+              fetchpriority="low"
+              alt="Generated prefixes decoded as each level completes."
+            />
+          </figure>
+        </div>
+      </div>
+    </section>
+
+    <section class="bib" id="BibTeX">
+      <div class="wrap">
+        <h2>BibTeX</h2>
+        <pre><code>@article{dinkevich2026apex,
+  title={APEX: Asynchronous Prefix Denoising for Extreme Compression},
+  author={Dinkevich, David and Chiprut, Nisan and HaCohen, Yoav and Lischinski, Dani},
+  year={2026}
+}</code></pre>
+      </div>
+    </section>
+
+    <footer class="site-footer">
+      <div class="wrap">
+        This page was built using the
+        <a href="https://github.com/eliahuhorwitz/Academic-project-page-template" target="_blank">Academic Project Page Template</a> adopted from
+        <a href="https://nerfies.github.io" target="_blank">Nerfies</a>. Licensed under
+        <a href="http://creativecommons.org/licenses/by-sa/4.0/" target="_blank">CC BY-SA 4.0</a>.
+      </div>
+    </footer>
+  </body>
+</html>
