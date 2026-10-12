@@ -5,8 +5,68 @@
     <meta name="viewport" content="width=device-width, initial-scale=1" />
     <meta
       name="description"
-      content="APEX: Asynchronous Prefix Denoising for Extreme Compression. We make high-compression latent spaces competitive by enabling channel scaling."
+      content="APEX: Asynchronous Prefix Denoising for Extreme Compression. Hierarchical latents with asynchronous denoising (asynchronous diffusion over channel groups), enabling channel scaling."
     />
+    <meta
+      name="keywords"
+      content="Asynchronous Prefix Denoising, APEX, asynchronous denoising, asynchronous diffusion, channel scaling, hierarchical latent, extreme compression, latent diffusion, ImageNet-512"
+    />
+    <meta name="citation_title" content="APEX: Asynchronous Prefix Denoising for Extreme Compression" />
+    <meta name="citation_author" content="Dinkevich, David" />
+    <meta name="citation_author_institution" content="Lightricks" />
+    <meta name="citation_author_institution" content="Hebrew University of Jerusalem" />
+    <meta name="citation_author" content="Chiprut, Nisan" />
+    <meta name="citation_author_institution" content="Lightricks" />
+    <meta name="citation_author" content="HaCohen, Yoav" />
+    <meta name="citation_author_institution" content="Lightricks" />
+    <meta name="citation_author" content="Lischinski, Dani" />
+    <meta name="citation_author_institution" content="Hebrew University of Jerusalem" />
+    <meta name="citation_publication_date" content="2026/10/09" />
+    <meta name="citation_arxiv_id" content="2610.12843" />
+    <meta name="citation_pdf_url" content="https://daviddinkevich.github.io/APEX/static/pdfs/apex_paper.pdf" />
+    <meta name="citation_abstract_html_url" content="https://daviddinkevich.github.io/APEX/" />
+    <meta
+      name="citation_keywords"
+      content="Asynchronous Prefix Denoising, APEX, asynchronous denoising, asynchronous diffusion, channel scaling, hierarchical latent, extreme compression, latent diffusion, ImageNet-512"
+    />
+    <script type="application/ld+json">
+      {
+        "@context": "https://schema.org",
+        "@type": "ScholarlyArticle",
+        "name": "APEX: Asynchronous Prefix Denoising for Extreme Compression",
+        "headline": "APEX: Asynchronous Prefix Denoising for Extreme Compression",
+        "url": "https://daviddinkevich.github.io/APEX/",
+        "sameAs": "https://arxiv.org/abs/2610.12843",
+        "identifier": "https://arxiv.org/abs/2610.12843",
+        "datePublished": "2026-10-09",
+        "inLanguage": "en",
+        "isAccessibleForFree": true,
+        "image": "https://daviddinkevich.github.io/static/images/apex-social-card.gif",
+        "keywords": [
+          "Asynchronous Prefix Denoising",
+          "APEX",
+          "asynchronous denoising",
+          "asynchronous diffusion",
+          "channel scaling",
+          "hierarchical latent",
+          "extreme compression",
+          "latent diffusion",
+          "ImageNet-512"
+        ],
+        "abstract": "Fewer latent tokens promise cheaper diffusion. Yet aggressive latent compression creates a reconstruction-generation dilemma: adding channels improves reconstruction but makes generation harder. We introduce APEX, short for Asynchronous Prefix denoising for EXtreme compression, which pairs a hierarchical latent space with asynchronous denoising over channel groups. Our autoencoder orders channel prefixes from structure to detail, while one shared denoiser generates them at staggered local times without adding tokens. On ImageNet-512, APEX outperforms existing methods at every evaluated channel count under 64× and 128× compression. At matched training and guided sampling compute, it also outperforms a 256-token model at every evaluated budget, with larger gains at lower compute.",
+        "encoding": {
+          "@type": "MediaObject",
+          "contentUrl": "https://daviddinkevich.github.io/APEX/static/pdfs/apex_paper.pdf",
+          "encodingFormat": "application/pdf"
+        },
+        "author": [
+          { "@type": "Person", "name": "David Dinkevich", "url": "https://daviddinkevich.github.io/" },
+          { "@type": "Person", "name": "Nisan Chiprut", "url": "https://scholar.google.com/citations?user=jFfW4qMAAAAJ" },
+          { "@type": "Person", "name": "Yoav HaCohen", "url": "https://scholar.google.com/citations?user=gKJ3MfIAAAAJ" },
+          { "@type": "Person", "name": "Dani Lischinski", "url": "https://www.cs.huji.ac.il/~danix/" }
+        ]
+      }
+    </script>
     <meta property="og:type" content="website" />
     <meta property="og:title" content="APEX: Asynchronous Prefix Denoising for Extreme Compression" />
     <meta property="og:description" content="We make high-compression latent spaces competitive by enabling channel scaling." />
@@ -34,7 +94,7 @@
     <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
     <link href="https://fonts.googleapis.com/css2?family=Inter:wght@450;500;600;700&display=swap" rel="stylesheet" />
     <link rel="preload" as="image" href="static/images/hero/trajectories/iguana/frames/000.webp" fetchpriority="high" />
-    <link rel="stylesheet" href="static/css/index.css?v=story-17" />
+    <link rel="stylesheet" href="static/css/index.css?v=story-21" />
     <script defer src="static/js/story-utils.js?v=story-8"></script>
     <script defer src="static/js/hero-clock.js?v=story-25"></script>
     <script defer src="static/js/channel-plot.js?v=story-6"></script>
@@ -45,6 +105,7 @@
     <script defer src="static/js/reveal.js?v=story-5"></script>
   </head>
   <body>
+    <div class="intro">
     <header class="site-header">
       <div class="wrap">
         <h1>APEX: Asynchronous Prefix Denoising for Extreme Compression</h1>
@@ -159,6 +220,7 @@
         </details>
       </div>
     </section>
+    </div>
 
     <section class="split-section story-viewport" id="problem">
       <div class="wrap-wide">

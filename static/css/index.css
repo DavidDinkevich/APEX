@@ -482,20 +482,67 @@ a:hover {
 }
 
 @media (min-width: 861px) {
+  html.layout-stacked .intro {
+    display: flex;
+    flex-direction: column;
+    min-height: 100svh;
+  }
+
   html.layout-stacked .site-header {
     display: flex;
-    min-height: 36svh;
+    flex: 0 0 36svh;
     align-items: center;
-    padding-top: 32px;
-    padding-bottom: 32px;
+    padding-top: 3.5svh;
+    padding-bottom: 3.5svh;
+  }
+
+  html.layout-stacked .site-header h1 {
+    margin-bottom: 2.8svh;
+    font-size: 5svh;
+  }
+
+  html.layout-stacked .authors {
+    font-size: 2.2svh;
+  }
+
+  html.layout-stacked .affiliations {
+    font-size: 1.8svh;
+  }
+
+  html.layout-stacked .links {
+    margin-top: 2.8svh;
+  }
+
+  html.layout-stacked .btn {
+    font-size: 1.8svh;
   }
 
   html.layout-stacked .hero-stage {
     display: flex;
+    flex: 1 1 auto;
     min-height: 64svh;
     align-items: center;
-    padding-top: 28px;
-    padding-bottom: 48px;
+    padding-top: 3svh;
+    padding-bottom: 5svh;
+  }
+
+  html.layout-stacked #hero-clock,
+  html.layout-stacked #hero-token {
+    height: 29svh;
+  }
+
+  html.layout-stacked .hero-level-strip {
+    min-height: 29svh;
+  }
+
+  html.layout-stacked .hero-level-card canvas {
+    width: min(100%, 29svh);
+    margin-inline: auto;
+  }
+
+  html.layout-stacked .tldr {
+    margin-top: 3.5svh;
+    font-size: 3.6svh;
   }
 
   html.layout-stacked .hero-stage > .wrap {
