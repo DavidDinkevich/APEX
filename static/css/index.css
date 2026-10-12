@@ -55,27 +55,12 @@ a:hover {
 }
 
 .site-header h1 {
-  margin: 0;
-  font-size: clamp(52px, 5vw, 96px);
+  margin: 0 auto 26px;
+  max-width: 18em;
+  font-size: clamp(28px, 3.2vw, 44px);
   font-weight: 650;
-  letter-spacing: -0.04em;
-  line-height: 1.02;
-}
-
-.expansion {
-  margin: 14px auto 26px;
-  max-width: 42em;
-  font-size: clamp(24px, 1.65vw, 36px);
-  font-weight: 450;
-  color: var(--muted);
-  letter-spacing: -0.02em;
-  line-height: 1.3;
-  overflow-wrap: break-word;
-}
-
-.expansion b {
-  color: var(--ink);
-  font-weight: 700;
+  letter-spacing: -0.03em;
+  line-height: 1.15;
 }
 
 .authors {
