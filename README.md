@@ -4,9 +4,9 @@
 
 David Dinkevich, Nisan Chiprut, Yoav HaCohen, Dani Lischinski
 
-<p align="right">
-  <a href="https://daviddinkevich.github.io/APEX/"><img src="https://img.shields.io/badge/Project-Page-2563A6" alt="Project Page"></a>
-</p>
+**Project page:** https://daviddinkevich.github.io/APEX/  
+**Paper (arXiv):** https://arxiv.org/abs/2610.12843v1  
+**Hugging Face:** https://huggingface.co/papers/2610.12843
 
 </div>
 
