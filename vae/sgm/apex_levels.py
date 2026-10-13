@@ -50,3 +50,36 @@ def sample_level(num_levels: int, generator: Optional[torch.Generator] = None) -
     assert num_levels >= 1
     idx = torch.randint(num_levels, (1,), generator=generator)
     return int(idx.item())
+
+
+def level_log_name(channels: int, target: int) -> str:
+    assert channels > 0
+    assert target > 0
+    return f"c{channels}_{target}"
+
+
+def level_recon_strip(panels: Sequence[torch.Tensor]) -> torch.Tensor:
+    assert len(panels) >= 1
+    first = panels[0]
+    assert all(panel.shape[:-1] == first.shape[:-1] for panel in panels)
+    return torch.cat(list(panels), dim=-1)
+
+
+def level_recon_sheet(panels: Sequence[torch.Tensor]) -> torch.Tensor:
+    strip = level_recon_strip(panels)
+    assert strip.ndim == 4
+    assert strip.shape[0] >= 1
+    rows = torch.cat([strip[index] for index in range(strip.shape[0])], dim=-2)
+    return rows.unsqueeze(0)
+
+
+def level_recon_panel(reconstruction: torch.Tensor, image: torch.Tensor, target: int) -> torch.Tensor:
+    assert reconstruction.shape == image.shape
+    _, _, height, width = image.shape
+    assert height == width
+    recon = box_downsample_to(reconstruction, target)
+    gt = box_downsample_to(image, target)
+    if target < height:
+        recon = F.interpolate(recon, size=(height, height), mode="nearest")
+        gt = F.interpolate(gt, size=(height, height), mode="nearest")
+    return torch.cat([recon, gt], dim=-1)

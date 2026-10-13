@@ -16,6 +16,9 @@ from ..apex_levels import (
     assert_level_config,
     box_downsample_to,
     keep_prefix_channels,
+    level_log_name,
+    level_recon_panel,
+    level_recon_sheet,
     sample_level,
 )
 from ..modules.autoencoding.regularizers import AbstractRegularizer
@@ -650,15 +653,36 @@ class AutoencoderDC(AutoencodingEngine):
 
     def _encode_decode_for_loss(
         self, x: torch.Tensor
-    ) -> Tuple[torch.Tensor, torch.Tensor, dict, torch.Tensor]:
+    ) -> Tuple[torch.Tensor, torch.Tensor, dict, torch.Tensor, Optional[int]]:
         z, reg_log = self.encode(x, return_reg_log=True)
         if self.level_channels is None:
-            return z, self.decode(z), reg_log, x
+            return z, self.decode(z), reg_log, x, None
         level = sample_level(len(self.level_channels))
         z = keep_prefix_channels(z, self.level_channels[level])
         xrec = self.decode(z)
         target = self.level_target_sizes[level]
-        return z, box_downsample_to(xrec, target), reg_log, box_downsample_to(x, target)
+        return z, box_downsample_to(xrec, target), reg_log, box_downsample_to(x, target), level
+
+    def _rec_mean_at_level(self, x: torch.Tensor, level: int, split: str, extra_info: dict) -> torch.Tensor:
+        z_full, reg_log = self.encode(x, return_reg_log=True)
+        channels = self.level_channels[level]
+        target = self.level_target_sizes[level]
+        z = keep_prefix_channels(z_full, channels)
+        xrec = box_downsample_to(self.decode(z), target)
+        x_tgt = box_downsample_to(x, target)
+        info = dict(extra_info)
+        info["z"] = z
+        info["regularization_log"] = reg_log
+        info["split"] = split
+        info["optimizer_idx"] = 0
+        if hasattr(self.loss, "forward_keys"):
+            info = {k: info[k] for k in self.loss.forward_keys}
+        out_loss = self.loss(x_tgt, xrec, **info)
+        rec_key = f"{split}/loss/rec"
+        if isinstance(out_loss, tuple):
+            _, log_dict = out_loss
+            return log_dict[rec_key]
+        return out_loss.detach()
 
     def forward(
         self, x: torch.Tensor, global_step: int = 0
@@ -671,7 +695,7 @@ class AutoencoderDC(AutoencodingEngine):
         self, batch: dict, batch_idx: int, optimizer_idx: int = 0
     ) -> torch.Tensor:
         x = self.get_input(batch)
-        z, xrec, regularization_log, x = self._encode_decode_for_loss(x)
+        z, xrec, regularization_log, x, level = self._encode_decode_for_loss(x)
         if hasattr(self.loss, "forward_keys"):
             extra_info = {
                 "z": z,
@@ -695,6 +719,9 @@ class AutoencoderDC(AutoencodingEngine):
                 # simple loss function
                 aeloss = out_loss
                 log_dict_ae = {"train/loss/rec": aeloss.detach()}
+            if level is not None:
+                name = level_log_name(self.level_channels[level], self.level_target_sizes[level])
+                log_dict_ae[f"train/loss/rec/{name}"] = log_dict_ae["train/loss/rec"]
 
             self.log_dict(
                 log_dict_ae,
@@ -725,15 +752,16 @@ class AutoencoderDC(AutoencodingEngine):
             raise NotImplementedError(f"Unknown optimizer {optimizer_idx}")
 
     def _validation_step(self, batch: dict, batch_idx: int, postfix: str = "") -> Dict:
-        x = self.get_input(batch)
-        z, xrec, regularization_log, x = self._encode_decode_for_loss(x)
+        images = self.get_input(batch)
+        z, xrec, regularization_log, x, level = self._encode_decode_for_loss(images)
+        split = "val" + postfix
         if hasattr(self.loss, "forward_keys"):
             extra_info = {
                 "z": z,
                 "optimizer_idx": 0,
                 "global_step": self.global_step,
                 "last_layer": self.get_last_layer(),
-                "split": "val" + postfix,
+                "split": split,
                 "regularization_log": regularization_log,
                 "autoencoder": self,
             }
@@ -745,8 +773,15 @@ class AutoencoderDC(AutoencodingEngine):
             aeloss, log_dict_ae = out_loss
         else:
             aeloss = out_loss
-            log_dict_ae = {f"val{postfix}/loss/rec": aeloss.detach()}
+            log_dict_ae = {f"{split}/loss/rec": aeloss.detach()}
         full_log_dict = log_dict_ae
+        if level is not None:
+            with torch.no_grad():
+                for level_i in range(len(self.level_channels)):
+                    name = level_log_name(self.level_channels[level_i], self.level_target_sizes[level_i])
+                    full_log_dict[f"{split}/loss/rec/{name}"] = self._rec_mean_at_level(
+                        images, level_i, split, extra_info
+                    )
 
         if "optimizer_idx" in extra_info:
             extra_info["optimizer_idx"] = 1
@@ -767,9 +802,15 @@ class AutoencoderDC(AutoencodingEngine):
         log = dict()
         x = self.get_input(batch)
 
-        _, xrec, _ = self(x)
+        z, xrec, _ = self(x)
         log["inputs"] = x
         log["reconstructions"] = xrec
+        if self.level_channels is not None:
+            panels = []
+            for channels, target in zip(self.level_channels, self.level_target_sizes):
+                recon = self.decode(keep_prefix_channels(z, channels))
+                panels.append(level_recon_panel(recon, x, target))
+            log["levels"] = level_recon_sheet(panels)
         diff = 0.5 * torch.abs(torch.clamp(xrec, -1.0, 1.0) - x)
         diff.clamp_(0, 1.0)
         log["diff"] = 2.0 * diff - 1.0
