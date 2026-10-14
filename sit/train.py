@@ -19,11 +19,18 @@ from time import time
 import argparse
 import logging
 import os
+import sys
 
 from apex_loss import apex_training_loss
+from apex_sample import initial_latents, prefix_latents, staggered_euler
+from apex_schedule import group_channel_sizes
 from datasets.img_latent_dataset import ImgLatentDataset
 from models import SiT_models
 import wandb_utils
+
+SAMPLE_CLASS_LABELS = (207, 360, 387, 974, 88, 979, 417, 279)
+SAMPLE_CFG_SCALE = 4.0
+SAMPLE_STEPS = 50
 
 
 #################################################################################
@@ -82,6 +89,63 @@ def parse_level_channels(value):
     return channels
 
 
+def should_log_generations(step):
+    return step == 100 or step % 500 == 0
+
+
+def load_decoder(config_path, ckpt_path, device):
+    config_path = os.path.abspath(config_path)
+    ckpt_path = os.path.abspath(ckpt_path)
+    assert os.path.isfile(config_path), config_path
+    assert os.path.isfile(ckpt_path), ckpt_path
+    vae_root = os.path.abspath(os.path.join(os.path.dirname(__file__), "..", "vae"))
+    sys.path.insert(0, vae_root)
+    cwd = os.getcwd()
+    os.chdir(vae_root)
+    try:
+        from omegaconf import OmegaConf
+        from sgm.util import instantiate_from_config
+
+        config = OmegaConf.load(config_path)
+        decoder = instantiate_from_config(config.model)
+        decoder.apply_ckpt(ckpt_path)
+    finally:
+        os.chdir(cwd)
+    decoder.to(device).eval()
+    for param in decoder.parameters():
+        param.requires_grad_(False)
+    return decoder
+
+
+@torch.no_grad()
+def log_level_generations(ema, decoder, latent_mean, latent_std, args, device, step):
+    n = len(SAMPLE_CLASS_LABELS)
+    z = initial_latents(n, args.level_channels, args.latent_size, args.latent_size, device)
+    y = torch.tensor(SAMPLE_CLASS_LABELS, device=device)
+    z = torch.cat([z, z], 0)
+    y_null = torch.full((n,), args.num_classes, device=device, dtype=y.dtype)
+    y = torch.cat([y, y_null], 0)
+    samples = staggered_euler(
+        ema.forward_with_cfg,
+        z,
+        dict(y=y, cfg_scale=SAMPLE_CFG_SCALE),
+        level_channels=args.level_channels,
+        gap=args.gap,
+        num_steps=SAMPLE_STEPS,
+    )
+    samples, _ = samples.chunk(2, dim=0)
+    mean = latent_mean.to(device=device, dtype=samples.dtype)
+    std = latent_std.to(device=device, dtype=samples.dtype)
+    decoder.to(device)
+    try:
+        panels = [decoder.decode(prefix * std + mean) for prefix in prefix_latents(samples, args.level_channels)]
+        strip = torch.cat(panels, dim=-1).cpu()
+    finally:
+        decoder.to("cpu")
+        torch.cuda.empty_cache()
+    wandb_utils.log_image(strip, step)
+
+
 #################################################################################
 #                                  Training Loop                                #
 #################################################################################
@@ -104,11 +168,20 @@ def main(args):
     local_batch_size = int(args.global_batch_size // dist.get_world_size())
 
     # Setup an experiment folder:
+    if args.wandb:
+        assert args.vae_config is not None, "wandb sampling requires --vae-config"
+        assert args.vae_ckpt is not None, "wandb sampling requires --vae-ckpt"
+        assert os.path.isfile(args.vae_config), args.vae_config
+        assert os.path.isfile(args.vae_ckpt), args.vae_ckpt
+
     if rank == 0:
         os.makedirs(args.results_dir, exist_ok=True)  # Make results folder (holds all experiment subfolders)
-        experiment_index = len(glob(f"{args.results_dir}/*"))
-        model_string_name = args.model.replace("/", "-")  # e.g., SiT-XL/2 --> SiT-XL-2 (for naming folders)
-        experiment_name = f"{experiment_index:03d}-{model_string_name}-apex"
+        if args.experiment_name is not None:
+            experiment_name = args.experiment_name
+        else:
+            experiment_index = len(glob(f"{args.results_dir}/*"))
+            model_string_name = args.model.replace("/", "-")  # e.g., SiT-XL/2 --> SiT-XL-2 (for naming folders)
+            experiment_name = f"{experiment_index:03d}-{model_string_name}-apex"
         experiment_dir = f"{args.results_dir}/{experiment_name}"  # Create an experiment folder
         checkpoint_dir = f"{experiment_dir}/checkpoints"  # Stores saved model checkpoints
         os.makedirs(checkpoint_dir, exist_ok=True)
@@ -140,11 +213,16 @@ def main(args):
     # Setup optimizer (we used default Adam betas=(0.9, 0.999) and a constant learning rate of 1e-4 in our paper):
     opt = torch.optim.AdamW(model.parameters(), lr=1e-4, weight_decay=0)
 
+    train_steps = 0
     if args.ckpt is not None:
         checkpoint = torch.load(args.ckpt, map_location="cpu")
         model.module.load_state_dict(checkpoint["model"])
         ema.load_state_dict(checkpoint["ema"])
         opt.load_state_dict(checkpoint["opt"])
+        assert "train_steps" in checkpoint, "checkpoint is missing train_steps"
+        train_steps = int(checkpoint["train_steps"])
+    else:
+        update_ema(ema, model.module, decay=0)  # Ensure EMA is initialized with synced weights
 
     dataset = ImgLatentDataset(args.data_path)
     sampler = DistributedSampler(
@@ -164,16 +242,21 @@ def main(args):
         drop_last=True
     )
     logger.info(f"Dataset contains {len(dataset):,} latents ({args.data_path})")
+    latent_mean = dataset._latent_mean
+    latent_std = dataset._latent_std
+    decoder = None
+    if args.wandb and rank == 0:
+        decoder = load_decoder(args.vae_config, args.vae_ckpt, torch.device("cpu"))
 
     # Prepare models for training:
-    update_ema(ema, model.module, decay=0)  # Ensure EMA is initialized with synced weights
     model.train()  # important! This enables embedding dropout for classifier-free guidance
     ema.eval()  # EMA model should always be in eval mode
 
     # Variables for monitoring/logging purposes:
-    train_steps = 0
     log_steps = 0
     running_loss = 0
+    num_levels = len(group_channel_sizes(args.level_channels))
+    running_level_losses = torch.zeros(num_levels, device=device)
     start_time = time()
 
     logger.info(f"Training for {args.epochs} epochs...")
@@ -184,7 +267,7 @@ def main(args):
             x = x.to(device)
             y = y.to(device)
             assert x.shape[1:] == (in_channels, args.latent_size, args.latent_size), tuple(x.shape)
-            loss = apex_training_loss(
+            loss, level_losses = apex_training_loss(
                 model,
                 x,
                 y,
@@ -192,6 +275,7 @@ def main(args):
                 gap=args.gap,
                 p_l0=args.p_l0,
             )
+            assert level_losses.shape == (num_levels,), (level_losses.shape, num_levels)
             opt.zero_grad()
             loss.backward()
             opt.step()
@@ -199,6 +283,7 @@ def main(args):
 
             # Log loss values:
             running_loss += loss.item()
+            running_level_losses += level_losses
             log_steps += 1
             train_steps += 1
             if train_steps % args.log_every == 0:
@@ -210,16 +295,30 @@ def main(args):
                 avg_loss = torch.tensor(running_loss / log_steps, device=device)
                 dist.all_reduce(avg_loss, op=dist.ReduceOp.SUM)
                 avg_loss = avg_loss.item() / dist.get_world_size()
-                logger.info(f"(step={train_steps:07d}) Train Loss: {avg_loss:.4f}, Train Steps/Sec: {steps_per_sec:.2f}")
+                avg_level = running_level_losses / log_steps
+                dist.all_reduce(avg_level, op=dist.ReduceOp.SUM)
+                avg_level = avg_level / dist.get_world_size()
+                level_text = " ".join(
+                    f"level_{level}={value:.4f}" for level, value in enumerate(avg_level.tolist())
+                )
+                logger.info(
+                    f"(step={train_steps:07d}) Train Loss: {avg_loss:.4f}, {level_text}, "
+                    f"Train Steps/Sec: {steps_per_sec:.2f}"
+                )
                 if args.wandb:
-                    wandb_utils.log(
-                        { "train loss": avg_loss, "train steps/sec": steps_per_sec },
-                        step=train_steps
-                    )
+                    stats = {"train loss": avg_loss, "train steps/sec": steps_per_sec}
+                    for level, value in enumerate(avg_level.tolist()):
+                        stats[f"learning_level/level_{level}_loss"] = value
+                    wandb_utils.log(stats, step=train_steps)
                 # Reset monitoring variables:
                 running_loss = 0
+                running_level_losses.zero_()
                 log_steps = 0
                 start_time = time()
+
+            if args.wandb and rank == 0 and should_log_generations(train_steps):
+                logger.info(f"(step={train_steps:07d}) Logging level generations")
+                log_level_generations(ema, decoder, latent_mean, latent_std, args, device, train_steps)
 
             # Save SiT checkpoint:
             if train_steps % args.ckpt_every == 0 and train_steps > 0:
@@ -228,7 +327,8 @@ def main(args):
                         "model": model.module.state_dict(),
                         "ema": ema.state_dict(),
                         "opt": opt.state_dict(),
-                        "args": args
+                        "args": args,
+                        "train_steps": train_steps,
                     }
                     checkpoint_path = f"{checkpoint_dir}/{train_steps:07d}.pt"
                     torch.save(checkpoint, checkpoint_path)
@@ -258,6 +358,9 @@ if __name__ == "__main__":
     parser.add_argument("--log-every", type=int, default=100)
     parser.add_argument("--ckpt-every", type=int, default=50_000)
     parser.add_argument("--wandb", action="store_true")
+    parser.add_argument("--vae-config", type=str, default=None)
+    parser.add_argument("--vae-ckpt", type=str, default=None)
+    parser.add_argument("--experiment-name", type=str, default=None)
     parser.add_argument("--ckpt", type=str, default=None,
                         help="Optional path to a custom SiT checkpoint")
     args = parser.parse_args()

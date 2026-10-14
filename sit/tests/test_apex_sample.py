@@ -4,9 +4,20 @@ from pathlib import Path
 import torch
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
-from apex_sample import initial_latents, resample_leaving_hold, staggered_euler
+from apex_sample import initial_latents, prefix_latents, resample_leaving_hold, staggered_euler
 from apex_schedule import group_channel_sizes
 from models import SiT
+
+
+def test_prefix_latents_zero_the_suffix():
+    latents = torch.arange(16, dtype=torch.float32).reshape(2, 8, 1, 1)
+    panels = prefix_latents(latents, (2, 4, 8))
+    assert len(panels) == 3
+    assert torch.equal(panels[0][:, :2], latents[:, :2])
+    assert torch.all(panels[0][:, 2:] == 0)
+    assert torch.equal(panels[1][:, :4], latents[:, :4])
+    assert torch.all(panels[1][:, 4:] == 0)
+    assert torch.equal(panels[2], latents)
 
 
 def test_initial_latents_are_gaussian_l0_and_zero_later():
@@ -78,6 +89,7 @@ def test_cfg_guides_all_latent_channels():
 
 
 if __name__ == "__main__":
+    test_prefix_latents_zero_the_suffix()
     test_initial_latents_are_gaussian_l0_and_zero_later()
     test_resample_leaving_hold_injects_noise()
     test_euler_freezes_clamped_band()

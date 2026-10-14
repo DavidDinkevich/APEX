@@ -1,4 +1,4 @@
-from typing import Sequence
+from typing import Sequence, Tuple
 
 import torch
 
@@ -22,7 +22,7 @@ def apex_training_loss(
     level_channels: Sequence[int],
     gap: float,
     p_l0: float,
-) -> torch.Tensor:
+) -> Tuple[torch.Tensor, torch.Tensor]:
     assert latents.ndim == 4
     sizes = group_channel_sizes(level_channels)
     assert latents.shape[1] == sum(sizes)
@@ -44,4 +44,5 @@ def apex_training_loss(
         start = end
     group_mse = torch.stack(group_mse, dim=1)
     mass = mask.sum(dim=1).clamp(min=1.0)
-    return (group_mse * mask).sum(dim=1).div(mass).mean()
+    level_losses = (group_mse * mask).mean(dim=0)
+    return (group_mse * mask).sum(dim=1).div(mass).mean(), level_losses.detach()

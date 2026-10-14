@@ -8,6 +8,7 @@ from apex_schedule import (
     group_channel_sizes,
     hold_zero_mask,
     level_times_from_clock,
+    prefix_channel_counts,
 )
 
 
@@ -67,6 +68,18 @@ def staggered_euler(
         x = x - dt * velocity
         x = apply_held_zero(x, t_next.expand(batch, -1), level_channels)
     return x
+
+
+def prefix_latents(latents: torch.Tensor, level_channels: Sequence[int]) -> list[torch.Tensor]:
+    prefixes = prefix_channel_counts(level_channels)
+    assert latents.ndim == 4
+    assert latents.shape[1] == prefixes[-1], (latents.shape, prefixes)
+    panels = []
+    for keep in prefixes:
+        panel = latents.clone()
+        panel[:, keep:] = 0
+        panels.append(panel)
+    return panels
 
 
 def initial_latents(batch: int, level_channels: Sequence[int], height: int, width: int, device, dtype=torch.float32):
