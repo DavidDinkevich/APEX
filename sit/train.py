@@ -22,7 +22,7 @@ import os
 import sys
 
 from apex_loss import apex_training_loss
-from apex_sample import initial_latents, prefix_latents, staggered_euler
+from apex_sample import initial_latents, prefix_latents, stack_batch_as_rows, staggered_euler
 from apex_schedule import group_channel_sizes
 from datasets.img_latent_dataset import ImgLatentDataset
 from models import SiT_models
@@ -143,7 +143,7 @@ def log_level_generations(ema, decoder, latent_mean, latent_std, args, device, s
     finally:
         decoder.to("cpu")
         torch.cuda.empty_cache()
-    wandb_utils.log_image(strip, step)
+    wandb_utils.log_image(stack_batch_as_rows(strip), step)
 
 
 #################################################################################
@@ -215,7 +215,7 @@ def main(args):
 
     train_steps = 0
     if args.ckpt is not None:
-        checkpoint = torch.load(args.ckpt, map_location="cpu")
+        checkpoint = torch.load(args.ckpt, map_location="cpu", weights_only=False)
         model.module.load_state_dict(checkpoint["model"])
         ema.load_state_dict(checkpoint["ema"])
         opt.load_state_dict(checkpoint["opt"])

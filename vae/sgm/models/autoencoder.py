@@ -61,7 +61,7 @@ class AbstractAutoencoder(pl.LightningModule):
         if ckpt is None:
             return
         if ckpt.endswith("ckpt"):
-            sd = torch.load(ckpt, map_location="cpu")["state_dict"]
+            sd = torch.load(ckpt, map_location="cpu", weights_only=False)["state_dict"]
         elif ckpt.endswith("safetensors"):
             sd = load_safetensors(ckpt)
         else:

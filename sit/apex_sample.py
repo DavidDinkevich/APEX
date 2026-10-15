@@ -70,6 +70,13 @@ def staggered_euler(
     return x
 
 
+def stack_batch_as_rows(strip: torch.Tensor) -> torch.Tensor:
+    assert strip.ndim == 4
+    assert strip.shape[0] >= 1
+    rows = torch.cat([strip[index] for index in range(strip.shape[0])], dim=-2)
+    return rows.unsqueeze(0)
+
+
 def prefix_latents(latents: torch.Tensor, level_channels: Sequence[int]) -> list[torch.Tensor]:
     prefixes = prefix_channel_counts(level_channels)
     assert latents.ndim == 4

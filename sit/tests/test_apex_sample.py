@@ -4,9 +4,17 @@ from pathlib import Path
 import torch
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
-from apex_sample import initial_latents, prefix_latents, resample_leaving_hold, staggered_euler
+from apex_sample import initial_latents, prefix_latents, resample_leaving_hold, stack_batch_as_rows, staggered_euler
 from apex_schedule import group_channel_sizes
 from models import SiT
+
+
+def test_samples_are_stacked_as_rows():
+    strip = torch.arange(16, dtype=torch.float32).reshape(2, 1, 2, 4)
+    sheet = stack_batch_as_rows(strip)
+    assert sheet.shape == (1, 1, 4, 4)
+    assert torch.equal(sheet[0, :, :2], strip[0])
+    assert torch.equal(sheet[0, :, 2:], strip[1])
 
 
 def test_prefix_latents_zero_the_suffix():
@@ -89,6 +97,7 @@ def test_cfg_guides_all_latent_channels():
 
 
 if __name__ == "__main__":
+    test_samples_are_stacked_as_rows()
     test_prefix_latents_zero_the_suffix()
     test_initial_latents_are_gaussian_l0_and_zero_later()
     test_resample_leaving_hold_injects_noise()
